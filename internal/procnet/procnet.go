@@ -1,11 +1,68 @@
 package procnet
 
-type Stats struct {
-	NInterface string // Network Interface
-	RxBytes    uint64 // Recieved bytes
-	TxBytes    uint64 // Transmitted bytes
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+)
+
+type Data struct {
+	RxBytes uint64 // Recieved bytes
+	TxBytes uint64 // Transmitted bytes
 }
 
-func Diff(s1, s2 *Stats) (uint64, uint64) {
-	return (s1.RxBytes - s2.RxBytes), (s1.TxBytes - s2.TxBytes)
+var validNInterfaces = map[string]bool{
+	"enp4s0": true, // Ethernet
+	"wlp3s0": true, // WiFi
+}
+
+func validNIsFunc(nif string) bool {
+	return validNInterfaces[nif]
+}
+
+func ReadTotalDataUsage() (Data, error) {
+	f, err := os.Open("/proc/net/dev")
+	if err != nil {
+		return Data{}, fmt.Errorf("error reading /proc/net/dev: %w", err)
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	// Skip the two header lines
+	scanner.Scan()
+	scanner.Scan()
+
+	var totalRx, totalTx uint64
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		fields := strings.Fields(line)
+
+		// /proc/net/dev lines usually have 17 fields
+		if len(fields) < 10 {
+			continue
+		}
+
+		// Clean the interface name (e.g., "eth0:")
+		name := strings.TrimSuffix(fields[0], ":")
+
+		if !validNIsFunc(name) {
+			continue
+		}
+
+		// fields[1] is Received Bytes, fields[9] is Transmitted Bytes
+		rx, _ := strconv.ParseUint(fields[1], 10, 64)
+		tx, _ := strconv.ParseUint(fields[9], 10, 64)
+
+		totalRx += rx
+		totalTx += tx
+	}
+
+	if err := scanner.Err(); err != nil {
+		return Data{}, err
+	}
+
+	return Data{totalRx, totalTx}, nil
 }
