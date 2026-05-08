@@ -38,6 +38,7 @@ func (s *State) Init() error {
 	if err != nil {
 		return err
 	}
+	fmt.Println(currProc.PrintHuman()) // DEBUG:
 
 	now := time.Now()
 	today := now.YearDay()
