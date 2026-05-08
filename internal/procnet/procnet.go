@@ -1,68 +1,43 @@
 package procnet
 
-import (
-	"bufio"
-	"fmt"
-	"os"
-	"strconv"
-	"strings"
-)
+import "fmt"
 
 type Data struct {
 	RxBytes uint64 // Recieved bytes
 	TxBytes uint64 // Transmitted bytes
 }
 
-var validNInterfaces = map[string]bool{
-	"enp4s0": true, // Ethernet
-	"wlp3s0": true, // WiFi
+func (d Data) GreaterThan(other Data) bool {
+	return (d.RxBytes + d.TxBytes) > (other.RxBytes + other.TxBytes)
 }
 
-func validNIsFunc(nif string) bool {
-	return validNInterfaces[nif]
+func (d Data) GreaterOrEq(other Data) bool {
+	return d.GreaterThan(other) ||
+		(d.RxBytes+d.TxBytes) == (other.RxBytes+other.TxBytes)
 }
 
-func ReadTotalDataUsage() (Data, error) {
-	f, err := os.Open("/proc/net/dev")
-	if err != nil {
-		return Data{}, fmt.Errorf("error reading /proc/net/dev: %w", err)
+// Delta calculates (d - previous).
+// It returns 0 if previous is larger than d (to prevent uint64 wrap-around).
+func (d Data) Delta(previous Data) Data {
+	var res Data
+	if d.RxBytes > previous.RxBytes {
+		res.RxBytes = d.RxBytes - previous.RxBytes
 	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-	// Skip the two header lines
-	scanner.Scan()
-	scanner.Scan()
-
-	var totalRx, totalTx uint64
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		fields := strings.Fields(line)
-
-		// /proc/net/dev lines usually have 17 fields
-		if len(fields) < 10 {
-			continue
-		}
-
-		// Clean the interface name (e.g., "eth0:")
-		name := strings.TrimSuffix(fields[0], ":")
-
-		if !validNIsFunc(name) {
-			continue
-		}
-
-		// fields[1] is Received Bytes, fields[9] is Transmitted Bytes
-		rx, _ := strconv.ParseUint(fields[1], 10, 64)
-		tx, _ := strconv.ParseUint(fields[9], 10, 64)
-
-		totalRx += rx
-		totalTx += tx
+	if d.TxBytes > previous.TxBytes {
+		res.TxBytes = d.TxBytes - previous.TxBytes
 	}
+	return res
+}
 
-	if err := scanner.Err(); err != nil {
-		return Data{}, err
+// Add sums two Data structs together.
+func (d Data) Add(other Data) Data {
+	return Data{
+		RxBytes: d.RxBytes + other.RxBytes,
+		TxBytes: d.TxBytes + other.TxBytes,
 	}
+}
 
-	return Data{totalRx, totalTx}, nil
+// String provides a human-readable version for logging.
+func (d Data) String() string {
+	return fmt.Sprintf("RX: %d, TX: %d", d.RxBytes, d.TxBytes)
 }
